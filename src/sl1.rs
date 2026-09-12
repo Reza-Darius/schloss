@@ -4,6 +4,7 @@
 use std::{
     cell::UnsafeCell,
     hint::spin_loop,
+    ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering::Relaxed},
 };
 
@@ -12,17 +13,26 @@ pub struct Lock<T> {
     data: UnsafeCell<T>,
 }
 
-unsafe impl<T> Send for Lock<T> {}
-unsafe impl<T> Sync for Lock<T> {}
+unsafe impl<T> Send for Lock<T> where T: Send {}
+unsafe impl<T> Sync for Lock<T> where T: Sync {}
 
 pub struct Guard<'a, T> {
     lock: &'a Lock<T>,
 }
 
-impl<T> Guard<'_, T> {
-    pub fn get(&mut self) -> &mut T {
-        // SAFETY: the guard is only ever held by one thread
+impl<T> DerefMut for Guard<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: only one thread can hold the guard
         unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+impl<T> Deref for Guard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        // SAFETY: only one thread can hold the guard
+        unsafe { &*self.lock.data.get() }
     }
 }
 
@@ -76,13 +86,13 @@ mod test {
                     s.spawn(|| {
                         for _ in 0..N_COUNT / N_THREADS {
                             let mut guard = counter.lock();
-                            let n = *guard.get();
-                            *guard.get() = n + 1;
+                            let n = *guard;
+                            *guard = n + 1;
                         }
                     });
                 }
             });
-            assert_eq!(N_COUNT, *counter.lock().get());
+            assert_eq!(N_COUNT, *counter.lock());
         }
     }
 }
