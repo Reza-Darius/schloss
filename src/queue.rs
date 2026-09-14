@@ -1,5 +1,5 @@
 /*
-* a simple single producer, single consumer queue
+* a simple thread safe queue
 */
 
 #![allow(dead_code)]
