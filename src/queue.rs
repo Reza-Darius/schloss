@@ -15,7 +15,8 @@ pub struct Queue<T> {
 #[derive(Debug, Default)]
 pub struct QueueInner<T> {
     q: Mutex<VecDeque<T>>,
-    condvar: Condvar,
+    prod_cv: Condvar,
+    cons_cv: Condvar,
 }
 
 impl<T> Queue<T>
@@ -26,7 +27,8 @@ where
         Queue {
             inner: QueueInner {
                 q: Mutex::new(VecDeque::with_capacity(cap)),
-                condvar: Condvar::new(),
+                prod_cv: Condvar::new(),
+                cons_cv: Condvar::new(),
             }
             .into(),
         }
@@ -40,12 +42,12 @@ where
                 eprintln!("pushing element {:?}", value);
 
                 guard.push_back(value);
-                self.inner.condvar.notify_one();
+                self.inner.cons_cv.notify_one();
                 return;
             } else {
                 eprintln!("waiting for capacity...");
                 // wait on full queue
-                self.inner.condvar.wait(&mut guard);
+                self.inner.prod_cv.wait(&mut guard);
             }
         }
     }
@@ -57,12 +59,12 @@ where
             if let Some(item) = guard.pop_front() {
                 eprintln!("popping element {:?}", item);
 
-                self.inner.condvar.notify_one();
+                self.inner.prod_cv.notify_one();
                 return item;
             } else {
                 eprintln!("waiting for element...");
                 // wait on empty queue
-                self.inner.condvar.wait(&mut guard);
+                self.inner.cons_cv.wait(&mut guard);
             }
         }
     }
