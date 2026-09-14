@@ -62,7 +62,7 @@ impl<T> FutexLock<T> {
     }
 
     pub fn lock(&self) -> FutexGuard<'_, T> {
-        // if the lock bit is 0 we got the lock
+        // fast path: if the lock bit is 0 we got the lock
         if self.inner.fword.fetch_or(LOCK_MASK, AcqRel) & LOCK_MASK == 0 {
             return FutexGuard { lock: self };
         }
@@ -82,7 +82,7 @@ impl<T> FutexLock<T> {
     }
 
     fn unlock(&self) {
-        // if no thread is waiting we return
+        // if no thread is waiting we return immediately
         if self.inner.fword.fetch_and(!LOCK_MASK, AcqRel) & !LOCK_MASK == 0 {
             return;
         };
