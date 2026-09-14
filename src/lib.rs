@@ -1,1 +1,2 @@
-pub mod sl1;
+pub mod spin_lock;
+pub mod futex_lock;
