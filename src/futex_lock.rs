@@ -1,4 +1,8 @@
-/* a simple futex lock */
+/*
+* a simple futex lock
+* capable to sleeping idle threads and waking them up
+*/
+
 #![allow(dead_code)]
 
 use std::{
@@ -15,7 +19,7 @@ pub struct FutexLock<T> {
 
 // futexes need a stable address for the futex word so this type is !Unpin
 struct LockInner<T> {
-    // 1 = locked
+    // MSB indicates the locked state, with 1 denoting an acquired lock
     fword: AtomicU32,
     data: UnsafeCell<T>,
     _boo: PhantomPinned,
