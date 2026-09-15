@@ -1,3 +1,4 @@
 pub mod spin_lock;
 pub mod futex_lock;
-pub mod queue;
+pub mod condvar_queue;
+pub mod semaphore;

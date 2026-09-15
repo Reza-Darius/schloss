@@ -1,5 +1,5 @@
 /*
-* a simple thread safe queue
+* a simple thread safe queue using conditional variables
 */
 
 #![allow(dead_code)]

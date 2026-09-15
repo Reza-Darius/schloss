@@ -99,7 +99,7 @@ fn futex_wait(fword: &AtomicU32, expected: u32) {
     unsafe {
         let rc = libc::syscall(
             libc::SYS_futex,
-            fword.as_ptr() as *const c_uint,
+            fword as *const AtomicU32,
             libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG,
             expected as c_uint,
             0,
@@ -118,7 +118,7 @@ fn futex_wake(fword: &AtomicU32, nwaker: u32) {
     unsafe {
         let rc = libc::syscall(
             libc::SYS_futex,
-            fword.as_ptr() as *const c_uint,
+            fword as *const AtomicU32,
             libc::FUTEX_WAKE | libc::FUTEX_PRIVATE_FLAG,
             nwaker as c_uint,
         );
