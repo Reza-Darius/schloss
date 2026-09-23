@@ -1,6 +1,5 @@
 /*
-* a simple futex lock
-* capable to sleeping idle threads and waking them up
+* a simple futex lock based on: https://www.akkadia.org/drepper/futex.pdf
 */
 
 #![allow(dead_code)]
@@ -9,10 +8,7 @@ use std::{
     cell::UnsafeCell,
     ffi::c_uint,
     ops::{Deref, DerefMut},
-    sync::atomic::{
-        AtomicU32,
-        Ordering::{AcqRel, Acquire, Relaxed},
-    },
+    sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 
 const UNLOCKED: u32 = 0;

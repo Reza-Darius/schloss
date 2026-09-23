@@ -8,7 +8,6 @@
 use std::{
     cell::UnsafeCell,
     ffi::c_uint,
-    marker::PhantomPinned,
     ops::{Deref, DerefMut},
     sync::atomic::{
         AtomicU32,
