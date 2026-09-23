@@ -67,7 +67,7 @@ impl<T> FutexLock<T> {
 
     pub fn lock(&self) -> FutexGuard<'_, T> {
         let fw = &self.inner.fword;
-        let mut l = fw.fetch_or(LOCK_MASK, AcqRel);
+        let l = fw.fetch_or(LOCK_MASK, AcqRel);
         // fast path: if the lock bit is 0 we got the lock
         if l & LOCK_MASK == 0 {
             return FutexGuard { lock: self };
@@ -76,10 +76,9 @@ impl<T> FutexLock<T> {
         // increment the thread wait count
         fw.fetch_add(1, Relaxed);
         let mut exp = l + 1;
-        while l & LOCK_MASK != 0 {
+        while exp & LOCK_MASK != 0 {
             futex_wait(fw, exp);
-            l = fw.fetch_or(LOCK_MASK, AcqRel);
-            exp = l;
+            exp = fw.fetch_or(LOCK_MASK, AcqRel);
         }
 
         // decrement the thread wait count
