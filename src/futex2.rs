@@ -15,6 +15,10 @@ use std::{
     },
 };
 
+const UNLOCKED: u32 = 0;
+const LOCKED: u32 = 1;
+const CONTENDED: u32 = 2;
+
 pub struct FutexLock<T> {
     data: UnsafeCell<T>,
     inner: Box<LockInner>,
@@ -64,17 +68,22 @@ impl<T> FutexLock<T> {
     }
 
     pub fn lock(&self) -> FutexGuard<'_, T> {
-        // 0 = unlocked, 1 = locked, 2 = locked/contended
-        if self.inner.fword.compare_exchange(0, 1, Relaxed, Relaxed).is_err() {
-            while self.inner.fword.swap(2, Relaxed) != 0 {
-                futex_wait(&self.inner.fword, 2);
+        let fw = &self.inner.fword;
+
+        if fw
+            .compare_exchange(UNLOCKED, LOCKED, Relaxed, Relaxed)
+            .is_err()
+        {
+            while fw.swap(CONTENDED, Relaxed) != UNLOCKED {
+                futex_wait(fw, CONTENDED);
             }
         }
         FutexGuard { lock: self }
     }
 
     fn unlock(&self) {
-        if self.inner.fword.swap(0, Relaxed) == 2 {
+        // we only wake in the contended case
+        if self.inner.fword.swap(UNLOCKED, Relaxed) == CONTENDED {
             futex_wake(&self.inner.fword, 1);
         };
     }
@@ -147,4 +156,3 @@ mod test {
         }
     }
 }
-
