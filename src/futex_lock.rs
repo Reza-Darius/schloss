@@ -66,23 +66,24 @@ impl<T> FutexLock<T> {
     }
 
     pub fn lock(&self) -> FutexGuard<'_, T> {
-        let mut l = self.inner.fword.fetch_or(LOCK_MASK, Acquire);
+        let fw = &self.inner.fword;
+        let mut l = fw.fetch_or(LOCK_MASK, AcqRel);
         // fast path: if the lock bit is 0 we got the lock
         if l & LOCK_MASK == 0 {
             return FutexGuard { lock: self };
         }
 
         // increment the thread wait count
-        self.inner.fword.fetch_add(1, Relaxed);
-
+        fw.fetch_add(1, Relaxed);
+        let mut exp = l + 1;
         while l & LOCK_MASK != 0 {
-            let exp = self.inner.fword.load(Relaxed);
-            futex_wait(&self.inner.fword, exp);
-            l = self.inner.fword.fetch_or(LOCK_MASK, AcqRel);
+            futex_wait(fw, exp);
+            l = fw.fetch_or(LOCK_MASK, AcqRel);
+            exp = l;
         }
 
         // decrement the thread wait count
-        self.inner.fword.fetch_sub(1, Relaxed);
+        fw.fetch_sub(1, Relaxed);
 
         FutexGuard { lock: self }
     }
@@ -90,28 +91,34 @@ impl<T> FutexLock<T> {
     fn unlock(&self) {
         // clear the lock bit and check for waiting threads
         // we can avoid the system call in the uncontended case
-        if self.inner.fword.fetch_and(!LOCK_MASK, AcqRel) & !LOCK_MASK == 0 {
-            return;
+        if self.inner.fword.fetch_and(!LOCK_MASK, AcqRel) & !LOCK_MASK != 0 {
+            println!("waking");
+
+            futex_wake(&self.inner.fword, 1);
         };
-        // wake thread
-        futex_wake(&self.inner.fword, 1);
     }
 }
 
 /// tests if the futex word == expected, if yes, puts the thread to sleep
 fn futex_wait(fword: &AtomicU32, expected: u32) {
     unsafe {
-        let rc = libc::syscall(
-            libc::SYS_futex,
-            fword as *const AtomicU32,
-            libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG,
-            expected as c_uint,
-            0,
-        );
-        if rc == -1 {
-            let err = std::io::Error::last_os_error();
-            if err.raw_os_error() != Some(libc::EWOULDBLOCK) {
-                panic!("futex error {err}");
+        loop {
+            let rc = libc::syscall(
+                libc::SYS_futex,
+                fword as *const AtomicU32,
+                libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG,
+                expected as c_uint,
+                0,
+            );
+            if rc == -1 {
+                let err = std::io::Error::last_os_error();
+                match err.raw_os_error().unwrap() {
+                    libc::EINTR => continue,
+                    libc::EWOULDBLOCK => return,
+                    _ => panic!("futex error {err}"),
+                }
+            } else {
+                return;
             }
         }
     }

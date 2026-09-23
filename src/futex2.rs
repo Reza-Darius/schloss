@@ -17,12 +17,6 @@ const CONTENDED: u32 = 2;
 
 pub struct FutexLock<T> {
     data: UnsafeCell<T>,
-    inner: Box<LockInner>,
-}
-
-// futexes need a stable address so we box it
-struct LockInner {
-    // MSB indicates the locked state, with 1 denoting an acquired lock
     fword: AtomicU32,
 }
 
@@ -58,13 +52,13 @@ impl<T> Drop for FutexGuard<'_, T> {
 impl<T> FutexLock<T> {
     pub fn new(value: T) -> Self {
         FutexLock {
-            inner: Box::new(LockInner { fword: 0.into() }),
             data: UnsafeCell::new(value),
+            fword: 0.into(),
         }
     }
 
     pub fn lock(&self) -> FutexGuard<'_, T> {
-        let fw = &self.inner.fword;
+        let fw = &self.fword;
 
         if fw
             .compare_exchange(UNLOCKED, LOCKED, Relaxed, Relaxed)
@@ -79,8 +73,8 @@ impl<T> FutexLock<T> {
 
     fn unlock(&self) {
         // we only wake in the contended case
-        if self.inner.fword.swap(UNLOCKED, Relaxed) == CONTENDED {
-            futex_wake(&self.inner.fword, 1);
+        if self.fword.swap(UNLOCKED, Relaxed) == CONTENDED {
+            futex_wake(&self.fword, 1);
         };
     }
 }
@@ -133,7 +127,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn futex_lock() {
+    fn futex_lock2() {
         const N_COUNT: u32 = 10000;
         const N_THREADS: u32 = 20;
         const N_ITERATTIONS: u32 = 1000;
