@@ -7,22 +7,20 @@ use std::{collections::VecDeque, sync::Arc};
 
 use parking_lot::{Condvar, Mutex};
 
-#[derive(Debug, Default, Clone)]
+// cheap handle to a thread safe channel
+#[derive(Default, Clone)]
 pub struct Channel<T> {
     inner: Arc<ChanInner<T>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ChanInner<T> {
     q: Mutex<VecDeque<T>>,
     prod_cv: Condvar,
     cons_cv: Condvar,
 }
 
-impl<T> Channel<T>
-where
-    T: std::fmt::Debug,
-{
+impl<T> Channel<T> {
     pub fn new(cap: usize) -> Self {
         Channel {
             inner: ChanInner {
@@ -35,17 +33,29 @@ where
     }
 
     /// blocks the thread until room is available for a value
-    pub fn push(&self, value: T) {
+    pub fn push_back(&self, value: T) {
         let mut guard = self.inner.q.lock();
         loop {
             if guard.capacity() > guard.len() {
-                eprintln!("pushing element {:?}", value);
-
                 guard.push_back(value);
                 self.inner.cons_cv.notify_one();
                 return;
             } else {
-                eprintln!("waiting for capacity...");
+                // wait on full queue
+                self.inner.prod_cv.wait(&mut guard);
+            }
+        }
+    }
+
+    /// blocks the thread until room is available for a value
+    pub fn push_front(&self, value: T) {
+        let mut guard = self.inner.q.lock();
+        loop {
+            if guard.capacity() > guard.len() {
+                guard.push_front(value);
+                self.inner.cons_cv.notify_one();
+                return;
+            } else {
                 // wait on full queue
                 self.inner.prod_cv.wait(&mut guard);
             }
@@ -53,16 +63,27 @@ where
     }
 
     /// blocks the thread until a value becomes available
-    pub fn pop(&self) -> T {
+    pub fn pop_front(&self) -> T {
         let mut guard = self.inner.q.lock();
         loop {
             if let Some(item) = guard.pop_front() {
-                eprintln!("popping element {:?}", item);
-
                 self.inner.prod_cv.notify_one();
                 return item;
             } else {
-                eprintln!("waiting for element...");
+                // wait on empty queue
+                self.inner.cons_cv.wait(&mut guard);
+            }
+        }
+    }
+
+    /// blocks the thread until a value becomes available
+    pub fn pop_back(&self) -> T {
+        let mut guard = self.inner.q.lock();
+        loop {
+            if let Some(item) = guard.pop_back() {
+                self.inner.prod_cv.notify_one();
+                return item;
+            } else {
                 // wait on empty queue
                 self.inner.cons_cv.wait(&mut guard);
             }
@@ -87,7 +108,7 @@ mod test {
                 // producer
                 s.spawn(|| {
                     for e in data.iter().copied() {
-                        queue.push(e);
+                        queue.push_back(e);
                     }
                 });
 
@@ -95,7 +116,7 @@ mod test {
                 let r = s.spawn(|| {
                     let mut res = vec![];
                     for _ in 0..data.len() {
-                        res.push(queue.pop());
+                        res.push(queue.pop_front());
                     }
                     res
                 });

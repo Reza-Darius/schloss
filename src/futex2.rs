@@ -140,8 +140,7 @@ mod test {
                     s.spawn(|| {
                         for _ in 0..N_COUNT / N_THREADS {
                             let mut guard = counter.lock();
-                            let n = *guard;
-                            *guard = n + 1;
+                            *guard += 1;
                         }
                     });
                 }
