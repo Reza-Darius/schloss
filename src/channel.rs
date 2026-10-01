@@ -8,9 +8,15 @@ use std::{collections::VecDeque, sync::Arc};
 use parking_lot::{Condvar, Mutex};
 
 // cheap handle to a thread safe channel
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct Channel<T> {
     inner: Arc<ChanInner<T>>,
+}
+
+impl<T> Clone for Channel<T> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
 }
 
 #[derive(Default)]
