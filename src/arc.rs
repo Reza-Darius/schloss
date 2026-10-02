@@ -11,6 +11,11 @@ pub struct Arc<T> {
     inner: NonNull<InnerArc<T>>,
 }
 
+struct InnerArc<T> {
+    counter: AtomicU32,
+    data: T,
+}
+
 unsafe impl<T: Send + Sync> Send for Arc<T> {}
 unsafe impl<T: Send + Sync> Sync for Arc<T> {}
 
@@ -54,7 +59,3 @@ impl<T> Arc<T> {
     }
 }
 
-struct InnerArc<T> {
-    counter: AtomicU32,
-    data: T,
-}

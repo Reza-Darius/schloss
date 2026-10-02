@@ -2,8 +2,6 @@
 * a simple futex lock based on: https://www.akkadia.org/drepper/futex.pdf
 */
 
-#![allow(dead_code)]
-
 use std::{
     cell::UnsafeCell,
     ffi::c_uint,

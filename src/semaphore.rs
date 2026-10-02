@@ -13,10 +13,12 @@ pub struct Semaphore {
 #[derive(Debug)]
 struct InnerSem {
     cv: Condvar,
+    max: i32,
     lock: Mutex<i32>,
 }
 
 impl InnerSem {
+    /// decrements the semaphore and waits if permits <= 0
     fn wait(&self) {
         let mut guard = self.lock.lock().unwrap();
         while *guard <= 0 {
@@ -25,9 +27,12 @@ impl InnerSem {
         *guard -= 1;
     }
 
+    /// increments the semaphore and wakes a potential waiter
     fn post(&self) {
         let mut guard = self.lock.lock().unwrap();
-        *guard += 1;
+        if *guard < self.max {
+            *guard += 1;
+        }
         self.cv.notify_one();
     }
 }
@@ -38,6 +43,13 @@ pub struct Permit<'a> {
     sem: &'a InnerSem,
 }
 
+impl Permit<'_> {
+    /// drops the guard without putting the permit back into the semaphore
+    pub fn forget(self) {
+        std::mem::forget(self);
+    }
+}
+
 impl Drop for Permit<'_> {
     fn drop(&mut self) {
         self.sem.post();
@@ -45,30 +57,23 @@ impl Drop for Permit<'_> {
 }
 
 impl Semaphore {
-    pub fn new(permits: i32) -> Self {
+    pub fn new(max_permits: i32, initial_permits: i32) -> Self {
         Semaphore {
             inner: InnerSem {
                 cv: Condvar::new(),
-                lock: Mutex::new(permits),
+                max: max_permits,
+                lock: Mutex::new(initial_permits),
             }
             .into(),
         }
     }
 
     /// takes a RAII permit from the semaphore, waits if none are available
+    ///
+    /// use [std::mem::forget()] to prevent the permit to incrmenet the semaphore on drop
     pub fn permit(&self) -> Permit<'_> {
-        self.wait();
-        Permit { sem: &self.inner }
-    }
-
-    /// decrements the semaphore and waits if permits <= 0
-    pub fn wait(&self) {
         self.inner.wait();
-    }
-
-    /// increments the semaphore and wakes a potential waiter
-    pub fn post(&self) {
-        self.inner.post();
+        Permit { sem: &self.inner }
     }
 
     pub fn permits(&self) -> i32 {
