@@ -2,11 +2,14 @@
 * a simple futex lock based on: https://www.akkadia.org/drepper/futex.pdf
 */
 
+use crate::futex::*;
 use std::{
     cell::UnsafeCell,
-    ffi::c_uint,
     ops::{Deref, DerefMut},
-    sync::atomic::{AtomicU32, Ordering::Relaxed},
+    sync::atomic::{
+        AtomicU32,
+        Ordering::{Acquire, Relaxed, Release},
+    },
 };
 
 const UNLOCKED: u32 = 0;
@@ -56,13 +59,22 @@ impl<T> FutexLock<T> {
     }
 
     pub fn lock(&self) -> FutexGuard<'_, T> {
+        // The Linux implementation of std::sync::Mutex in the Rust standard library, at least the one in Rust 1.66.0, uses a spin count of 100.
+        const MAX_SPIN: u8 = 100;
+
         let fw = &self.fword;
+        let mut spin_count = 0;
+
+        while self.fword.load(Relaxed) == 1 && spin_count < MAX_SPIN {
+            spin_count += 1;
+            std::hint::spin_loop();
+        }
 
         if fw
-            .compare_exchange(UNLOCKED, LOCKED, Relaxed, Relaxed)
+            .compare_exchange(UNLOCKED, LOCKED, Acquire, Relaxed)
             .is_err()
         {
-            while fw.swap(CONTENDED, Relaxed) != UNLOCKED {
+            while fw.swap(CONTENDED, Acquire) != UNLOCKED {
                 futex_wait(fw, CONTENDED);
             }
         }
@@ -71,50 +83,9 @@ impl<T> FutexLock<T> {
 
     fn unlock(&self) {
         // we only wake in the contended case
-        if self.fword.swap(UNLOCKED, Relaxed) == CONTENDED {
+        if self.fword.swap(UNLOCKED, Release) == CONTENDED {
             futex_wake(&self.fword, 1);
         };
-    }
-}
-
-/// tests if the futex word == expected, if yes, puts the thread to sleep
-fn futex_wait(fword: &AtomicU32, expected: u32) {
-    unsafe {
-        loop {
-            let rc = libc::syscall(
-                libc::SYS_futex,
-                fword as *const AtomicU32,
-                libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG,
-                expected as c_uint,
-                0,
-            );
-            if rc == -1 {
-                let err = std::io::Error::last_os_error();
-                match err.raw_os_error().unwrap() {
-                    libc::EINTR => continue,
-                    libc::EWOULDBLOCK => return,
-                    _ => panic!("futex error {err}"),
-                }
-            } else {
-                return;
-            }
-        }
-    }
-}
-
-// wakes n waker fow the futex word
-fn futex_wake(fword: &AtomicU32, nwaker: u32) {
-    unsafe {
-        let rc = libc::syscall(
-            libc::SYS_futex,
-            fword as *const AtomicU32,
-            libc::FUTEX_WAKE | libc::FUTEX_PRIVATE_FLAG,
-            nwaker as libc::c_uint,
-        );
-
-        if rc == -1 {
-            panic!("futex wake: {}", std::io::Error::last_os_error());
-        }
     }
 }
 

@@ -1,6 +1,8 @@
 pub mod spin_lock;
-pub mod futex_lock;
-pub mod futex2;
+pub mod futex_lock1;
+pub mod futex_lock2;
 pub mod channel;
-pub mod semaphore;
+pub mod condvar_semaphore;
+pub mod futex_semaphore;
 pub mod arc;
+pub mod futex;
