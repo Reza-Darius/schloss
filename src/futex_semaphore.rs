@@ -3,8 +3,9 @@
 */
 
 #![allow(dead_code)]
-use std::sync::{
-    Arc, Condvar, Mutex, atomic::{AtomicU32, Ordering::{Acquire, Relaxed, Release}},
+use std::sync::atomic::{
+    AtomicU32,
+    Ordering::{Acquire, Relaxed, Release},
 };
 
 use crate::futex::{futex_wait, futex_wake_one};
@@ -58,7 +59,7 @@ impl Semaphore {
         let mut v = self.inner.load(Relaxed);
         loop {
             while v == 0 {
-                futex_wait(&self.inner, v);
+                futex_wait(&self.inner, 0);
                 v = self.inner.load(Relaxed);
             }
             match self.inner.compare_exchange(v, v - 1, Acquire, Relaxed) {
@@ -71,7 +72,8 @@ impl Semaphore {
     }
 
     pub fn post(&self) {
-        self.inner.fetch_add(1, Release);
-        futex_wake_one(&self.inner);
+        if self.inner.fetch_add(1, Release) == 0 {
+            futex_wake_one(&self.inner);
+        };
     }
 }
